@@ -21,11 +21,6 @@ require_once DRUPAL_ROOT . '/core/includes/file.inc';
 class MigrateExampleSourceRemoteCSV extends SourceCSV {
 
   /**
-   * Default cache directory in the "private://" file system.
-   */
-  const CACHE_PATH_DEFAULT = 'example_default_path';
-
-  /**
    * {@inheritdoc}
    */
   public function __construct(array $configuration, $plugin_id, $plugin_definition, MigrationInterface $migration) {
@@ -40,19 +35,6 @@ class MigrateExampleSourceRemoteCSV extends SourceCSV {
       $configuration['path'] = $this->downloadFile($configuration['ftp']);
     }
     parent::__construct($configuration, $plugin_id, $plugin_definition, $migration);
-  }
-
-  /**
-   * Gets the file system.
-   *
-   * @return \Drupal\Core\File\FileSystem
-   */
-  protected function getFileSystem() {
-    static $output;
-    if (!isset($output)) {
-      $output = \Drupal::service('file_system');
-    }
-    return $output;
   }
 
   /**
@@ -106,36 +88,6 @@ class MigrateExampleSourceRemoteCSV extends SourceCSV {
   }
 
   /**
-   * Given a filename, returns the file's "mtime" from SFTP server.
-   *
-   * @param string $path
-   *   Remote file path.
-   * @param array $conn_config
-   *   FTP configuration.
-   *
-   * @return array
-   *   File statistics or FALSE;
-   */
-  protected function getFileStatFromSFTPServer($path, array $conn_config) {
-    static $cache;
-    // Prepare cache parameters.
-    $key = $conn_config['server'];
-    $dirname = dirname($path);
-    // If not already cached, cache stats for the entire directory.
-    if (!is_array($cache) || !isset($cache[$key][$dirname])) {
-      $sftp = static::getSFTPConnection($conn_config);
-      $list = $sftp->rawlist($dirname);
-      // Ignore dots.
-      unset($list['.'], $list['..']);
-      $cache[$key][$dirname] = $list;
-    }
-    // Return stats from the cache, if exists.
-    $basename = basename($path);
-    return isset($cache[$key][$dirname][$basename])
-      ? $cache[$key][$dirname][$basename] : FALSE;
-  }
-
-  /**
    * Downloads a file from SFTP Server.
    *
    * @param array $conn_config
@@ -151,7 +103,6 @@ class MigrateExampleSourceRemoteCSV extends SourceCSV {
     // Merge with configuration defaults.
     $conn_config = $conn_config + [
       'port' => 21,
-      'cache_path' => static::CACHE_PATH_DEFAULT,
     ];
 
     // Remote file path must be specified!
@@ -162,63 +113,16 @@ class MigrateExampleSourceRemoteCSV extends SourceCSV {
     // Prepare file metadata.
     $path_remote = $conn_config['path'];
     $basename = basename($path_remote);
-    $path_local = $this->getFileCachePath($path_remote, $conn_config);
+    $path_local = file_directory_temp() . '/' . $basename;
 
-    // Determine if cache is valid.
-    $cache_valid = TRUE;
-
-    // Does a local cache file exist?
-    if (!is_file($path_local)) {
-      $cache_valid = FALSE;
+    // Download file by SFTP...
+    $sftp = static::getSFTPConnection($conn_config);
+    if (!$sftp->get($path_remote, $path_local)) {
+      throw new MigrateException('Cannot download remote file ' . $basename . ' by SFTP.');
     }
-    // Local cache does not exist.
-    else {
-      // Read remote "mtime" using SFTP.
-      if (!$remote_stat = $this->getFileStatFromSFTPServer($path_remote, $conn_config)) {
-        throw new MigrateException('Cannot read remote file ' . $basename . ' by SFTP.');
-      }
-      // Compare remote and local "mtime".
-      if ($remote_stat['mtime'] > filemtime($path_local)) {
-        // If cache is stale, clear the cache.
-        unlink($path_local);
-        $cache_valid = FALSE;
-      }
-    }
-    // If cache is not valid...
-    if (!$cache_valid) {
-      // Download file by SFTP...
-      $sftp = static::getSFTPConnection($conn_config);
-      if (!$sftp->get($path_remote, $path_local)) {
-        throw new MigrateException('Cannot download remote file ' . $basename . ' by SFTP.');
-      }
-    }
-
     // Return path to local (cached version) of the file.
     return $path_local;
   }
 
-  /**
-   * Returns the local cache path for a remote file path.
-   *
-   * @param string $path_remote
-   *   Remote file path.
-   *
-   * @param array $conn_config
-   *   Connection configuration.
-   *
-   * @return string
-   *   Path to the cached file (whether the file exists or not).
-   */
-  protected function getFileCachePath($path_remote, array $conn_config) {
-    // Prepare cache directory.
-    $cache_dirname = 'private://' . $conn_config['cache_path'];
-    if (!file_prepare_directory($cache_dirname, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS)) {
-      throw new MigrateException('Cannot prepare cache directory ' . $cache_dirname . '.');
-    }
-    // Return cache file path.
-    $path_local = $cache_dirname . '/' . basename($path_remote);
-    $path_local = $this->getFileSystem()->realpath($path_local);
-    return $path_local;
-  }
-
 }
+
