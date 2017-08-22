@@ -1,12 +1,11 @@
-id: example_migration
-label: 'PUP subjects'
+id: migrate_example_content
+label: 'Migrate Example content'
 dependencies:
   enforced:
     module:
-      - pup_migrate
-migration_group: pup_biblio
+      - migrate_example_content
 source:
-  plugin: example_remote_csv
+  plugin: migrate_example_source_csv
   ftp:
     settings: sftp
     path: /mycsv_file.csv

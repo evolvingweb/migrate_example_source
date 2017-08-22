@@ -1,0 +1,5 @@
+name: migrate_example_source
+type: module
+description: Migration example to get remote CSV sources via sftp.
+core: 8.x
+

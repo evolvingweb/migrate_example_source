@@ -15,10 +15,10 @@ require_once DRUPAL_ROOT . '/core/includes/file.inc';
  * Source for download CSV files.
  *
  * @MigrateSource(
- *   id = "example_remote_csv"
+ *   id = "migrate_example_source_csv"
  * )
  */
-class ExampleRemoteCSV extends SourceCSV {
+class MigrateExampleSourceRemoteCSV extends SourceCSV {
 
   /**
    * Default cache directory in the "private://" file system.
