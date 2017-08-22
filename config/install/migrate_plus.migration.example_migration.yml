@@ -1,0 +1,25 @@
+id: example_migration
+label: 'PUP subjects'
+dependencies:
+  enforced:
+    module:
+      - pup_migrate
+migration_group: pup_biblio
+source:
+  plugin: example_remote_csv
+  ftp:
+    settings: sftp
+    path: /mycsv_file.csv
+  track_changes: true
+  header_row_count: 1
+    - id
+  column_names:
+    0:
+      id: 'ID'
+    1:
+      title: 'Title'
+process:
+  title: title
+destination:
+  plugin: 'entity:taxonomy_term'
+  default_bundle: my_taxonomy
