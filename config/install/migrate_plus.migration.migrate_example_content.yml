@@ -1,24 +1,20 @@
 id: migrate_example_content
-label: 'Migrate Example content'
+label: 'Example content'
 dependencies:
   enforced:
     module:
-      - migrate_example_content
+      - migrate_example_source
 source:
-  plugin: migrate_example_source_csv
-  ftp:
+  plugin: migrate_example_source_remote_csv
+  sftp:
     settings: sftp
-    path: /mycsv_file.csv
+    path: "/path/to/file/example_content.csv"
   track_changes: true
   header_row_count: 1
+  keys:
     - id
-  column_names:
-    0:
-      id: 'ID'
-    1:
-      title: 'Title'
 process:
   title: title
+  body: body
 destination:
-  plugin: 'entity:taxonomy_term'
-  default_bundle: my_taxonomy
+  plugin: 'entity:node'

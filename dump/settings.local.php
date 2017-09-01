@@ -1,16 +1,15 @@
 <?php
 /**
  * @file
- * Database settings example.
- *
- * This is how I had sftp credentials  configured in my settings.php file.
+ * Example settings.local.php file.
  */
+
+// This is how I configured SFTP credentials in my settings.local.php.
 $settings['sftp'] = array(
   'default' => [
-    'server' => 'server.address.com',
+    'server' => 'sftp.example.com',
     'username' => 'user',
     'password' => 'password',
-    'port' => '22',
+    'port' => 22,
   ],
 );
-
