@@ -1,6 +1,6 @@
 <?php
 
-namespace Drupal\example_module\Plugin\migrate\source;
+namespace Drupal\migrate_source_csv\Plugin\migrate\source;
 
 use Drupal\migrate_source_csv\Plugin\migrate\source\CSV as SourceCSV;
 use Drupal\migrate\Plugin\MigrationInterface;
