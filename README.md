@@ -26,7 +26,7 @@ Once we have this file locally we will let the [Migrate Source CSV](https://www.
 
 ## The Source Migrate Plugin.
 
-Given a custom module lets call it `migrate_example_source` we need to create a php class in the following location:
+Let's create a custom module and call it `migrate_example_source` and create the php class inside this module in the following location:
 
 ```php
 /src/Plugin/migrate/source/
@@ -35,6 +35,10 @@ Given a custom module lets call it `migrate_example_source` we need to create a 
 Let's call it `MigrateExampleSourceRemoteCSV.php` and will contain this basic code:
 
 ```php
+namespace Drupal\migrate_source_csv\Plugin\migrate\source;
+
+use Drupal\migrate_source_csv\Plugin\migrate\source\CSV as SourceCSV;
+
 /**
  * @MigrateSource(
  *   id = "migrate_example_source_remote_csv"
@@ -44,4 +48,168 @@ class MigrateExampleSourceRemoteCSV extends SourceCSV {
 }
 ```
 
+Adding the annotation `@MigrateSource` will allow to Migrate Module automatically find our plugin so this part is important, our plugin will download the sources and after will let  the CSV plugin to handle the migration, so we will extend CSV plugin and add the code to download the source.
 
+Let's add the code to download the files in the plugin constructor.
+
+
+```php
+
+  /**
+   * {@inheritdoc}
+   */
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, MigrationInterface $migration) {
+    // Prepare connection parameters.
+    if (!empty($configuration['sftp'])) {
+      // A settings key must be specified.
+      // We use the settings key to get FTP configuration from $settings.
+      if (!isset($configuration['sftp']['settings'])) {
+        throw new MigrateException('Parameter "sftp/settings" not defined for Remote CSV source plugin.');
+      }
+      // Merge plugin settings with global settings.
+      $configuration['sftp'] += Settings::get('sftp', []);
+      // We simply download the remote CSV file to a temporary path and set
+      // the temporary path to the parent CSV plugin.
+      $configuration['path'] = $this->downloadFile($configuration['sftp']);
+    }
+    // If the file downloaded successfully with SFTP, then the "path" parameter
+    // will be populated and the parent plugin will detect the CSV file.
+    parent::__construct($configuration, $plugin_id, $plugin_definition, $migration);
+  }
+```
+
+In the construct we are getting the SFTP credentials from the settings.php file, the credentials should look like this:
+
+```php
+// Settings.php 
+$settings['sftp'] = array(
+  'default' => [
+    'server' => 'ftpserver.ltd',
+    'username' => 'username',
+    'password' => 'password',
+    'port' => '22',
+  ],
+);
+``` 
+
+Once we have the credentials of the FTP server we use the `$this->downloadFile()` method to download the file, this method contain the following code:
+
+```php
+/**
+   * Downloads a file from SFTP Server.
+   *
+   * @param array $conn_config
+   *   Connection configuration.
+   *
+   * @throws MigrateException
+   *   If something goes wrong.
+   *
+   * @return string
+   *   Path to local cached version of the remote file.
+   */
+  protected function downloadFile(array $conn_config) {
+    // Remote file path must be specified.
+    // Without knowing the remote file path, we cannot download the file!
+    if (empty($conn_config['path'])) {
+      throw new MigrateException('Required parameter "path" not defined.');
+    }
+
+    // Prepare to download file to a temporary directory.
+    $path_remote = $conn_config['path'];
+    $basename = basename($path_remote);
+    $path_local = file_directory_temp() . '/' . $basename;
+
+    // Download file by SFTP.
+    $sftp = static::getSFTPConnection($conn_config);
+    if (!$sftp->get($path_remote, $path_local)) {
+      throw new MigrateException('Cannot download remote file ' . $basename . ' by SFTP.');
+    }
+    // Return path to the local of the file.
+    // This will in turn be passed to the parent CSV plugin.
+    return $path_local;
+  }
+```
+
+This method create a SFTP connection, download the file and return the path so the CSV plugin can continue the migration, the code to create the SFTP (`static::getSFTPConnection`) connection is
+
+```php
+/**
+   * Returns an SFTP connection with the given configuration.
+   *
+   * @param array $conn_config
+   *   Connection parameters.
+   *
+   * @return SFTP
+   *   The SFTP Connection.
+   */
+  public static function getSFTPConnection(array $conn_config) {
+    static $connections;
+    $key = $conn_config['server'];
+    // We see if a connection for the given settings key is already created.
+    // This avoids creating multiple parallel connections to the same server.
+    if (!is_array($connections) || !isset($connections[$key])) {
+      // Merge with default settings.
+      // For example, if the SFTP settings in the source configuration do not
+      // have a "port", then we use port 22 by default.
+      $conn_config = $conn_config + [
+        'port' => 22,
+      ];
+      // Required config parameters must be set.
+      foreach (['server', 'username', 'password', 'port'] as $param) {
+        if (!isset($conn_config[$param])) {
+          throw new MigrateException('Required SFTP parameter ' . $param . ' not defined.');
+        }
+      }
+      // Establish SFTP connection.
+      $sftp = new SFTP($conn_config['server'], $conn_config['port']);
+      if (TRUE !== $sftp->login($conn_config['username'], $conn_config['password'])) {
+        throw new MigrateException('Cannot connect to SFTP server with the given credentials.');
+      }
+      // If the connection does not exist, we create it and cache it.
+      $connections[$key] = $sftp;
+    }
+    // Return the connection corresponding to the SFTP settings key.
+    return $connections[$key];
+  }
+```
+In the code we are using the [phpseclib](https://github.com/phpseclib/phpseclib) so we need to include it in our composer file using:
+
+```php
+composer require phpseclib/phpseclib
+```
+And we need to include it our class adding this in the top of our class (just below the namespace statement):
+
+```php
+use phpseclib\Net\SFTP
+```
+
+And that's it,  our plugin will download the CSV file and pass the path to the `Migrate Source CSV`, Finally, to use our plugin in a migration we will do it in this way:
+
+
+```yaml
+id: migrate_example_content
+label: 'Example content'
+dependencies:
+  enforced:
+    module:
+      - migrate_example_source
+source:
+  plugin: migrate_example_source_remote_csv
+  # Settings used from our plugin.
+  sftp:
+    settings: sftp
+    path: "/path/to/file/example_content.csv"
+  track_changes: true
+  # Settings used from the Migrate Source CSV plugin.
+  header_row_count: 1
+  keys:
+    - id
+process:
+  title: title
+  body: body
+destination:
+  plugin: 'entity:node'
+
+```
+
+If you want to see how the code look you there is a repo with all what we did here: [migrate_example_source](https://github.com/evolvingweb/migrate_example_source) 
