@@ -129,14 +129,23 @@ class MigrateExampleSourceRemoteCSV extends SourceCSV {
     $basename = basename($path_remote);
     $path_local = file_directory_temp() . '/' . $basename;
 
-    // Download file by SFTP.
-    $sftp = static::getSFTPConnection($conn_config);
-    if (!$sftp->get($path_remote, $path_local)) {
-      throw new MigrateException('Cannot download remote file ' . $basename . ' by SFTP.');
+    // Ensure that a file is only downloaded once per request.
+    //
+    // Without this, the plugin downloads the same file over and over
+    // when working with the 'migrate_lookup' plugin.
+    $downloaded =& drupal_static(__METHOD__, []);
+    if (!isset($downloaded[$path_remote])) {
+      // Download file by SFTP.
+      $sftp = static::getSFTPConnection($conn_config);
+      if (!$sftp->get($path_remote, $path_local)) {
+        throw new MigrateException('Cannot download remote file ' . $basename . ' by SFTP.');
+      }
+      $downloaded[$path_remote] = $path_local;
     }
+
     // Return path to the local of the file.
     // This will in turn be passed to the parent CSV plugin.
-    return $path_local;
+    return $downloaded[$path_remote];
   }
 
 }
